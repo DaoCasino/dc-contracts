@@ -1,0 +1,252 @@
+import '../core/interfaces.sol';
+import '../library/SafeMath.sol';
+import '../library/Utils.sol';
+import '../library/BytesLib.sol';
+
+pragma solidity ^0.4.24;
+
+contract Channel {
+
+     using SafeMath for uint;
+     using BytesLib for bytes;
+
+    IPlatform public platform;
+    IToken    public token;
+    INewGame  public gameLogic;
+
+    constructor(IPlatform _platform, IToken _token, INewGame _gameLogic) public {
+        platform  = IPlatform(_platform);
+        token     = IToken(_token);
+        gameLogic = INewGame(_gameLogic);
+    }
+
+    uint256 private  safeTime = 100;
+
+    // @dev Signature time to life (blocks)
+    uint256 constant TTL = 20;
+
+    event newChannelId(
+        bytes32 indexed newId
+    );
+
+    struct Channel {
+        Status  status;
+        address[2] users;                  
+        uint256[2] balances;        
+        uint256 round;
+        uint256 endBlock;
+        bytes   data;
+    }
+
+    enum Status {unused, open, close, dispute}
+
+    mapping(bytes32 => Channel) public channels;
+
+    mapping(bytes32 => bytes) public disputes;
+
+    // data - if you use signidice first 32 bytes must be rsa_openkey_fingerprint
+    function openChannel(
+        address[2] _users,
+        uint256[2] _balances,
+        uint256    _openingBlock,
+        bytes      _data,
+        uint8[2]   _v,
+        bytes32[2] _r, 
+        bytes32[2] _s 
+    )
+        external returns(bytes32 _hashId) 
+    {
+        
+        _hashId = keccak256(abi.encodePacked(address(this), _users, _balances, _openingBlock, _data));
+        
+        require(channels[_hashId].status == Status.unused, 'Used channel id');
+        require(_openingBlock.add(TTL) >= block.number, 'the signature is outdated');
+        //require(gameLogic.checkInitData(_data));
+        require(Utils.checkDoubleSignature(_users, _hashId, _v, _r, _s));
+        require(platform.deposit(_users[0], _balances[0]), 'fail deposit');
+        require(platform.deposit(_users[1], _balances[1]), 'fail deposit');
+        
+        channels[_hashId] = Channel({
+            status   : Status.open,
+            users    : _users,
+            balances : _balances,
+            round    : uint256(0),
+            endBlock : block.number.add(100),
+            data     : _data
+        });
+
+        emit newChannelId(_hashId);
+    }
+
+    function updateChannel(
+        bytes32    _id,
+        uint256[2] _balances,
+        uint256    _round,
+        bytes      _data,
+        uint8[2]   _v,
+        bytes32[2] _r,
+        bytes32[2] _s
+    )
+        public
+    {
+        Channel storage _channel = channels[_id];
+        bytes32 _hash = keccak256(abi.encodePacked(_id, _balances, _round, _data));
+        
+        require(_channel.status == Status.open || _channel.status == Status.dispute, 'invalid status');
+        require(_channel.round < _round, 'outdated session');
+
+        require(Utils.checkSum(_balances, _channel.balances), 'invalid balances');
+        require(Utils.checkDoubleSignature(_channel.users, _hash, _v, _r, _s), 'Invalid signature');
+
+        if (_channel.endBlock.sub(block.number) < safeTime) {
+            _channel.endBlock = block.number.add(safeTime);
+        }
+
+        if (_channel.status == Status.dispute) {
+            _channel.status == Status.open;
+            delete disputes[_id];
+        }
+
+        _channel.balances = _balances;
+        _channel.data     = _data;
+        _channel.round    = _round;
+
+    }
+
+    function closeByConsent(
+        bytes32    _id,
+        uint256[2] _balances,
+        uint256    _round,
+        bytes      _data,
+        uint8[2]   _v,
+        bytes32[2] _r,
+        bytes32[2] _s
+    )
+        external
+    {
+        Channel storage _channel = channels[_id];
+        bytes32 _hash = keccak256(abi.encodePacked(_id, _balances, _round, _data, true));
+
+        require(_channel.status == Status.open || _channel.status == Status.dispute, 'invalid status');
+        require(_channel.round < _round, 'outdated session');
+
+        require(Utils.checkSum(_balances, _channel.balances), 'invalid balances');
+        require(Utils.checkDoubleSignature(_channel.users, _hash, _v, _r, _s));
+
+        _channel.balances = _balances;
+        _channel.data     = _data;
+        _channel.round    = _round;
+
+        closeChannel(_id);
+    }
+
+    function openDispute(
+        bytes32    _id,
+        uint256[2] _balances,
+        uint256    _round,
+        bytes      _data,
+        bytes      _disputeData,
+        uint8[3]   _v,
+        bytes32[3] _r,
+        bytes32[3] _s
+    )
+        external 
+    {
+        if (_round != channels[_id].round.add(1)) {
+            updateChannel(_id, _balances, _round, _data,[_v[0], _v[1]], [_r[0], _r[1]], [_s[0], _s[1]]);
+        }
+
+        //TODO double signature check
+        
+        Channel storage _channel = channels[_id];
+        bytes32 _hash = keccak256(abi.encodePacked(_id, _round + 1, _disputeData));
+
+        require(ecrecover(_hash, _v[2], _r[2], _s[2]) == _channel.users[0], 'invalid round signature');
+        require(gameLogic.checkData(_disputeData), 'invalid game data');
+        require(gameLogic.getProfit(_disputeData) <= _channel.balances[1], 'invalid profit');
+
+        if (_channel.endBlock.sub(block.number) < safeTime) {
+            _channel.endBlock = block.number.add(safeTime);
+        }
+
+        disputes[_id]   = _disputeData;
+        _channel.status = Status.dispute;
+    }
+
+    function resolveDispute(
+        bytes32 _id,
+        bytes _N,
+        bytes _E,
+        bytes _rsaSign
+    )
+        external    
+    {
+        Channel storage _channel   = channels[_id];
+        bytes32 _RSAfingerprint    = _channel.data.toBytes32(uint(0));
+        bytes storage _disputeData = disputes[_id];
+        require(_channel.status == Status.dispute, 'invalid channel state');
+        require(keccak256(abi.encodePacked(keccak256(_N), keccak256(_E))) == _RSAfingerprint, 'invalid public components');
+        require(Utils.verify(keccak256(abi.encodePacked(_id, _channel.round.add(1),_disputeData)), _N, _E, _rsaSign), 'invalid RSA signature');
+        runGame(_id, _disputeData, _rsaSign);
+    }
+
+    function runGame(bytes32 _id, bytes _disputeData, bytes _signidiceSignature) internal {
+
+        // playerIndex = 0;
+        // dealerIndex = 1;
+
+        bool _win;
+        uint _profit;
+        Channel storage _channel = channels[_id];
+        
+        (_win, _profit) = gameLogic.game(_disputeData, _signidiceSignature);
+        if (_win) {
+            _channel.balances[1] = _channel.balances[1].sub(_profit);
+            _channel.balances[0] = _channel.balances[0].add(_profit);
+        } else {
+            _channel.balances[0] = _channel.balances[0].sub(_profit);
+            _channel.balances[1] = _channel.balances[1].add(_profit);
+        }
+        //emit logChannel("resolve dispute", _id, _channel.playerBalance, _channel.bankrollerBalance, _channel.session);
+        closeChannel(_id);
+    }
+
+    function closeByTime(bytes32 _id) external {
+        Channel storage _channel = channels[_id];
+        require(_channel.endBlock < block.number, 'invalid time');
+        if (_channel.status == Status.dispute) {
+            //closeByDispute(_id);
+            return;
+        }
+        closeChannel(_id);
+    }
+
+    function closeChannel(bytes32 _id) internal {
+        Channel storage _channel = channels[_id];
+        
+        uint _forReward;
+        uint _forPlayer;
+        uint _forBankroller;
+
+       // (_forReward, _forPlayer, _forBankroller) = rewardCalc(_channel);
+        
+       // serviceReward(_channel.player, _forReward);
+        token.transfer(_channel.users[0], _forPlayer);
+        token.transfer(_channel.users[1], _forBankroller);
+        
+       // platform.payout(_channel.player, _forPlayer);
+       // platform.payout(_channel.bankroller, _forBankroller);
+        
+        removeChannel(_id);
+    }
+
+    function removeChannel(bytes32 _id) internal {
+        delete channels[_id];
+        channels[_id].status = Status.close;
+    }
+
+    function game(bytes _gameData, bytes _signidiceSignature) public view returns(bool _win, uint _amount) {
+        return gameLogic.game(_gameData, _signidiceSignature);
+    }
+
+}

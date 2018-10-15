@@ -1,0 +1,8 @@
+build/
+node_modules/
+DC_snapshot/
+package-lock.json
+coverage
+coverage.json
+secrets.json
+zos.*
