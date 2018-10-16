@@ -1,9 +1,11 @@
 pragma solidity ^0.4.24;
 
-import { IToken, IGameFactory, IKYCOperator} from '../core/interfaces.sol';
-import '../library/SafeMath.sol';
+import '../interfaces/IToken.sol';
+import '../interfaces/IGameFactory.sol';
+import '../interfaces/IKYCOperator.sol';
+import '../lib/SafeMath.sol';
 import 'zeppelin-solidity/contracts/ownership/Ownable.sol';
-import 'openzeppelin-solidity/contracts/AddressUtils.sol';
+import 'zeppelin-solidity/contracts/AddressUtils.sol';
 /**
 * @title Platform Manager
 * @dev Contain all functions for platform management

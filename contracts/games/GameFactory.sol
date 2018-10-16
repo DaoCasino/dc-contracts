@@ -1,6 +1,9 @@
 pragma solidity ^0.4.24;
 
-import '../core/interfaces.sol';
+import '../interfaces/IToken.sol';
+import '../interfaces/IGameMarket.sol';
+import '../interfaces/IPlatformFactory.sol';
+import '../interfaces/IGameFactory.sol';
 import './GameInstance.sol';
     
 /**

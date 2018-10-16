@@ -1,15 +1,19 @@
 pragma solidity ^0.4.24;
 pragma experimental ABIEncoderV2;
 
-import '../interfaces/interfaces.sol';
-import '../library/SafeMath.sol';
-import '../library/Utils.sol';
-import './gameData.sol';
+import '../interfaces/IToken.sol';
+import '../interfaces/IGameMarket.sol';
+import '../interfaces/IPlatform.sol';
+import '../interfaces/IGame.sol';
+
+import '../lib/SafeMath.sol';
+import '../lib/Utils.sol';
+import '../gameCore/GameObject.sol';
 
 /**
  * @title Game instance
  */
-contract gameInstance is gameObject {
+contract gameInstance is GameObject {
 
     /** @dev Emits when channel was created, updated or closed */
     event logChannel(
@@ -374,7 +378,6 @@ contract gameInstance is gameObject {
     @notice Checks data for the dispute opening
     @param _id Unique channel identifier
     @param _session Number of the game session
-    @param _disputeSeed seed for generate random
     @param _disputeBet Player's bet
     @param _gameData Player's game data
     @param _sign Player's game data sign
@@ -413,9 +416,9 @@ contract gameInstance is gameObject {
     )
     public
     {
-        checkResolveDispute(_id, _N, _E, _rsaSign);
+        // checkResolveDispute(_id, _N, _E, _rsaSign); // TODO: UNCOMMENT WHEN checkResolveDispute would be done
         Dispute storage d = disputes[_id];
-        runGame(_id, d.disputeBet, _rsaSign);
+        runGame(_id, d.bets[d.bets.length-1], _rsaSign);
     }
 
     /**
@@ -425,27 +428,27 @@ contract gameInstance is gameObject {
     @param _E E-component of bankroller's rsa public key
     @param _rsaSign sign for generate random
     */
-    function checkResolveDispute(
-        bytes32 _id,
-        bytes _N,
-        bytes _E,
-        bytes _rsaSign
-    )
-    public view returns (bool)
-    {
-        Channel storage _channel = channels[_id];
-        Dispute storage d = disputes[_id];
-        require(_channel.status == Status.dispute, 'invalid channel status');
-        require(msg.sender == _channel.bankroller, 'sender is not player');
-        if (d.initiator == _channel.player) {
-            require(_channel.endBlock > block.number, 'invalid block number');
-        } else if (d.initiator == _channel.bankroller) {
-            require(_channel.endBlock < block.number, 'invalid block number');
-        }
-        require(keccak256(abi.encodePacked(keccak256(_N), keccak256(_E))) == _channel.RSAHash, 'invalid public components');
-        require(Utils.verify(keccak256(abi.encodePacked(_id, _channel.session.add(1), d.disputeBet, d.disputeGameData, d.disputeSeed)), _N, _E, _rsaSign), 'invalid RSA signature');
-        return true;
-    }
+    // function checkResolveDispute( // TODO: Fix Dispute.initiator field
+    //     bytes32 _id,
+    //     bytes _N,
+    //     bytes _E,
+    //     bytes _rsaSign
+    // )
+    // public view returns (bool)
+    // {
+    //     Channel storage _channel = channels[_id];
+    //     Dispute storage d = disputes[_id];
+    //     require(_channel.status == Status.dispute, 'invalid channel status');
+    //     require(msg.sender == _channel.bankroller, 'sender is not player');
+    //     if (d.initiator == _channel.player) {
+    //         require(_channel.endBlock > block.number, 'invalid block number');
+    //     } else if (d.initiator == _channel.bankroller) {
+    //         require(_channel.endBlock < block.number, 'invalid block number');
+    //     }
+    //     require(keccak256(abi.encodePacked(keccak256(_N), keccak256(_E))) == _channel.RSAHash, 'invalid public components');
+    //     require(Utils.verify(keccak256(abi.encodePacked(_id, _channel.session.add(1), d.disputeBet, d.disputeGameData, d.disputeSeed)), _N, _E, _rsaSign), 'invalid RSA signature');
+    //     return true;
+    // }
 
     /**
     @notice run last game round after dispute

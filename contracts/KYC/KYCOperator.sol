@@ -1,6 +1,6 @@
 pragma solidity ^0.4.24;
 
-import '../library/Utils.sol';
+import '../lib/Utils.sol';
 
 contract KYCOperator  {   
 
