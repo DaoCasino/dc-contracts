@@ -1,7 +1,10 @@
 pragma solidity ^0.4.24;
 
 import '../lib/SafeMath.sol';
-import '../interfaces/Interfaces.sol';
+import '../interfaces/IToken.sol';
+import '../interfaces/IGameMarket.sol';
+import '../interfaces/IPlatformFactory.sol';
+import '../interfaces/IGameFactory.sol';
 
 /**
 * @title Simple game

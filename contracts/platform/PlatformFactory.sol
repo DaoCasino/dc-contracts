@@ -1,6 +1,6 @@
-import './PlatformManager.sol';
-
 pragma solidity ^0.4.24;
+
+import './PlatformManager.sol';
 
 /**
 * @title Platform Factory

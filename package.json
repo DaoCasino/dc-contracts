@@ -17,6 +17,7 @@
     "solidity-coverage": "^0.5.11"
   },
   "dependencies": {
-    "truffle-hdwallet-provider": "^1.0.0-web3one.0"
+    "truffle-hdwallet-provider": "^1.0.0-web3one.0",
+    "zeppelin-solidity": "^1.12.0"
   }
 }
