@@ -1,6 +1,6 @@
 pragma solidity ^0.4.24;
 
-import '../core/interfaces.sol';
+import '../interfaces/interfaces.sol';
 import './GameInstance.sol';
     
 /**
@@ -18,8 +18,7 @@ contract GameFactory {
     /** @dev Emits when new game was created */
     event createGame(
         address indexed operator,
-        address indexed game,
-        address indexed proxy
+        address indexed game
     );
 
     /** @dev Example of token contract */

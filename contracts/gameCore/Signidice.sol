@@ -6,9 +6,11 @@ contract Signidice {
         uint[] memory randoms = new uint[](ranges.length);
         for (uint i = 0; i < ranges.length; i++) {
             uint256[2] memory range = ranges[i];
-            uint256 _min = range[0];
-            uint256 _max = range[1];
+            
+            uint256 _min  = range[0];
+            uint256 _max  = range[1];
             uint256 delta = (_max - _min + 1);
+            
             bytes32 lucky = keccak256(abi.encodePacked(_entropy, uint256(i)));
             
             while (uint256(lucky) >= (2**(256-1)/delta) * delta) {

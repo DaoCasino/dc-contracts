@@ -11,5 +11,12 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "eth-gas-reporter": "^0.1.12",
+    "solidity-coverage": "^0.5.11"
+  },
+  "dependencies": {
+    "truffle-hdwallet-provider": "^1.0.0-web3one.0"
+  }
 }
